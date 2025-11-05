@@ -220,6 +220,26 @@ monitoring:
 				Expect(cfg.Auth.OAuth.GroupsField).To(Equal("user_groups"))
 				Expect(cfg.Auth.OAuth.AdminGroupName).To(Equal("administrators"))
 			})
+
+			It("should handle OAuth introspection configuration from environment", func() {
+				os.Setenv("OAUTH_ENABLED", "true")
+				os.Setenv("OAUTH_CLIENT_ID", "env-client-id")
+				os.Setenv("OAUTH_CLIENT_SECRET", "env-client-secret")
+				os.Setenv("OAUTH_AUTH_URL", "http://env.example.com/auth")
+				os.Setenv("OAUTH_TOKEN_URL", "http://env.example.com/token")
+				os.Setenv("OAUTH_REDIRECT_URL", "http://localhost:3000/callback")
+				os.Setenv("OAUTH_INTROSPECTION_URL", "http://env.example.com/introspect")
+				os.Setenv("OAUTH_INTROSPECTION_CLIENT_ID", "introspection-client")
+				os.Setenv("OAUTH_INTROSPECTION_CLIENT_SECRET", "introspection-secret")
+
+				err := manager.Load("")
+				Expect(err).NotTo(HaveOccurred())
+
+				cfg := config.GetConfig()
+				Expect(cfg.Auth.OAuth.IntrospectionURL).To(Equal("http://env.example.com/introspect"))
+				Expect(cfg.Auth.OAuth.IntrospectionClientID).To(Equal("introspection-client"))
+				Expect(cfg.Auth.OAuth.IntrospectionClientSecret).To(Equal("introspection-secret"))
+			})
 		})
 
 		Context("with invalid config file", func() {
@@ -708,6 +728,9 @@ auth:
     jwksUrl: "http://auth.example.com/.well-known/jwks.json"
     issuerUrl: "http://auth.example.com"
     logoutUrl: "http://auth.example.com/logout"
+    introspectionUrl: "http://auth.example.com/introspect"
+    introspectionClientId: "introspection-client"
+    introspectionClientSecret: "introspection-secret"
     scopes: 
       - "openid"
       - "profile" 
@@ -740,6 +763,9 @@ auth:
 			Expect(oauth.ClientID).To(Equal("test-client"))
 			Expect(oauth.ClientSecret).To(Equal("test-secret"))
 			Expect(oauth.RedirectURL).To(Equal("http://localhost:8080/callback"))
+			Expect(oauth.IntrospectionURL).To(Equal("http://auth.example.com/introspect"))
+			Expect(oauth.IntrospectionClientID).To(Equal("introspection-client"))
+			Expect(oauth.IntrospectionClientSecret).To(Equal("introspection-secret"))
 			Expect(oauth.AdminUsers).To(ContainElements("admin@example.com", "superuser@example.com"))
 			Expect(oauth.AdminGroups).To(ContainElements("admins", "superusers"))
 			Expect(oauth.AdminGroupName).To(Equal("administrators"))
@@ -836,7 +862,9 @@ func clearTestEnvVars() {
 		"AUTH_ENABLED", "JWT_SECRET", "JWKS_URL", "AUTH_ISSUER", "AUTH_AUDIENCE",
 		"OAUTH_ENABLED", "OAUTH_CLIENT_ID", "OAUTH_CLIENT_SECRET", "OAUTH_REDIRECT_URL",
 		"OAUTH_AUTH_URL", "OAUTH_TOKEN_URL", "OAUTH_USERINFO_URL", "OAUTH_JWKS_URL",
-		"OAUTH_ISSUER_URL", "OAUTH_LOGOUT_URL", "OAUTH_ADMIN_USERS", "OAUTH_ADMIN_GROUPS",
+		"OAUTH_ISSUER_URL", "OAUTH_LOGOUT_URL", "OAUTH_INTROSPECTION_URL",
+		"OAUTH_INTROSPECTION_CLIENT_ID", "OAUTH_INTROSPECTION_CLIENT_SECRET",
+		"OAUTH_ADMIN_USERS", "OAUTH_ADMIN_GROUPS",
 		"OAUTH_USER_ID_FIELD", "OAUTH_EMAIL_FIELD", "OAUTH_NAME_FIELD", "OAUTH_GROUPS_FIELD", "OAUTH_ROLES_FIELD",
 		"OAUTH_ADMIN_GROUP_NAME", "OAUTH_MANAGER_GROUP_NAME", "OAUTH_USER_GROUP_NAME",
 		"REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD",

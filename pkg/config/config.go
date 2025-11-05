@@ -380,6 +380,15 @@ func (m *Manager) bindEnvVars() error {
 	if err := viper.BindEnv("auth.oauth.logoutUrl", "OAUTH_LOGOUT_URL"); err != nil {
 		return err
 	}
+	if err := viper.BindEnv("auth.oauth.introspectionUrl", "OAUTH_INTROSPECTION_URL"); err != nil {
+		return err
+	}
+	if err := viper.BindEnv("auth.oauth.introspectionClientId", "OAUTH_INTROSPECTION_CLIENT_ID"); err != nil {
+		return err
+	}
+	if err := viper.BindEnv("auth.oauth.introspectionClientSecret", "OAUTH_INTROSPECTION_CLIENT_SECRET"); err != nil {
+		return err
+	}
 
 	// OAuth Admin and Field Mappings
 	if err := viper.BindEnv("auth.oauth.adminUsers", "OAUTH_ADMIN_USERS"); err != nil {
