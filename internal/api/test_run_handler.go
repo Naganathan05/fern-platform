@@ -10,6 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/application"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/domain"
+	projectsApp "github.com/guidewire-oss/fern-platform/internal/domains/projects/application"
+	projectsDomain "github.com/guidewire-oss/fern-platform/internal/domains/projects/domain"
 	"github.com/guidewire-oss/fern-platform/pkg/logging"
 )
 
@@ -17,13 +19,15 @@ import (
 type TestRunHandler struct {
 	*BaseHandler
 	testingService *application.TestRunService
+	projectService *projectsApp.ProjectService
 }
 
 // NewTestRunHandler creates a new test run handler
-func NewTestRunHandler(testingService *application.TestRunService, logger *logging.Logger) *TestRunHandler {
+func NewTestRunHandler(testingService *application.TestRunService, projectService *projectsApp.ProjectService, logger *logging.Logger) *TestRunHandler {
 	return &TestRunHandler{
 		BaseHandler:    NewBaseHandler(logger),
 		testingService: testingService,
+		projectService: projectService,
 	}
 }
 
@@ -43,6 +47,13 @@ func (h *TestRunHandler) createTestRun(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate ProjectID
+	_, err := h.projectService.GetProject(c.Request.Context(), projectsDomain.ProjectID(input.ProjectID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Invalid project ID"})
 		return
 	}
 

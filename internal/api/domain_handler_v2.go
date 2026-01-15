@@ -42,7 +42,7 @@ func NewDomainHandlerV2(
 	return &DomainHandlerV2{
 		authHandler:           NewAuthHandler(authMiddleware, logger),
 		healthHandler:         NewHealthHandler(logger),
-		testRunHandler:        NewTestRunHandler(testingService, logger),
+		testRunHandler:        NewTestRunHandler(testingService, projectService, logger),
 		projectHandler:        NewProjectHandler(projectService, logger),
 		tagHandler:            NewTagHandler(tagService, logger),
 		systemHandler:         NewSystemHandler(logger),
