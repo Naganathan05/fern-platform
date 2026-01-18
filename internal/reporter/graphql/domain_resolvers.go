@@ -499,7 +499,7 @@ func (r *mutationResolver) UpdateProject_domain(ctx context.Context, id string, 
 	// Get the existing project
 	existingProject, err := r.projectService.GetProject(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("project not found: %w", err)
+		return nil, err
 	}
 
 	snapshot := existingProject.ToSnapshot()
@@ -662,7 +662,7 @@ func (r *mutationResolver) DeleteProject_domain(ctx context.Context, id string) 
 	// Get the existing project
 	existingProject, err := r.projectService.GetProject(ctx, projectID)
 	if err != nil {
-		return false, fmt.Errorf("project not found: %w", err)
+		return false, err
 	}
 
 	snapshot := existingProject.ToSnapshot()
@@ -774,7 +774,7 @@ func (r *queryResolver) Project_domain(ctx context.Context, id string) (*model.P
 func (r *queryResolver) ProjectByProjectID_domain(ctx context.Context, projectID string) (*model.Project, error) {
 	project, err := r.projectService.GetProject(ctx, projectsDomain.ProjectID(projectID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get project: %w", err)
+		return nil, err
 	}
 
 	return r.convertProjectToGraphQL(ctx, project), nil

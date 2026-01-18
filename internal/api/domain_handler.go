@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -634,6 +635,10 @@ func (h *DomainHandler) filterTestRunsByUserGroups(ctx context.Context, testRuns
 	for projectID := range projectIDs {
 		project, err := h.projectService.GetProject(ctx, projectsDomain.ProjectID(projectID))
 		if err != nil {
+			if errors.Is(err, projectsDomain.ErrProjectNotFound) {
+				h.logger.Warnf("Project %s not found while filtering test runs", projectID)
+				continue
+			}
 			h.logger.WithError(err).Warnf("Failed to get project %s", projectID)
 			continue
 		}

@@ -332,7 +332,7 @@ var _ = Describe("TestRunHandler", func() {
 
 		It("should return not found when project doesn't exist", func() {
 			projectRepo.On("FindByProjectID", mock.Anything, projectsDomain.ProjectID("missing-project")).
-			Return(nil, errors.New("project not found")).Once()
+				Return(nil, projectsDomain.ErrProjectNotFound).Once()
 
 			requestBody := map[string]interface{}{
 				"projectId": "missing-project",

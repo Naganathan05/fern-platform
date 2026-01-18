@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+	"errors"
 
 	authDomain "github.com/guidewire-oss/fern-platform/internal/domains/auth/domain"
 	"github.com/guidewire-oss/fern-platform/internal/domains/integrations"
@@ -295,7 +296,10 @@ func (r *mutationResolver) CreateJiraConnection(ctx context.Context, input model
 
 	project, err := r.projectService.GetProject(ctx, projectsDomain.ProjectID(input.ProjectID))
 	if err != nil {
-		return nil, fmt.Errorf("project not found")
+		if errors.Is(err, projectsDomain.ErrProjectNotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to get project: %w", err)
 	}
 
 	// Check if user has manager permissions for this project
@@ -336,7 +340,10 @@ func (r *mutationResolver) UpdateJiraConnection(ctx context.Context, id string, 
 
 	project, err := r.projectService.GetProject(ctx, projectsDomain.ProjectID(connection.ProjectID()))
 	if err != nil {
-		return nil, fmt.Errorf("project not found")
+		if errors.Is(err, projectsDomain.ErrProjectNotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to get project: %w", err)
 	}
 
 	// Check if user has manager permissions for this project
@@ -374,7 +381,10 @@ func (r *mutationResolver) UpdateJiraCredentials(ctx context.Context, id string,
 
 	project, err := r.projectService.GetProject(ctx, projectsDomain.ProjectID(connection.ProjectID()))
 	if err != nil {
-		return nil, fmt.Errorf("project not found")
+		if errors.Is(err, projectsDomain.ErrProjectNotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to get project: %w", err)
 	}
 
 	// Check if user has manager permissions for this project
@@ -414,8 +424,11 @@ func (r *mutationResolver) TestJiraConnection(ctx context.Context, id string) (b
 
 	project, err := r.projectService.GetProject(ctx, projectsDomain.ProjectID(connection.ProjectID()))
 	if err != nil {
-		r.logger.Errorf("TestJiraConnection: project not found: %v", err)
-		return false, fmt.Errorf("project not found")
+		if errors.Is(err, projectsDomain.ErrProjectNotFound) {
+			r.logger.Errorf("TestJiraConnection: project not found: %v", err)
+			return false, err
+		}
+		return false, fmt.Errorf("failed to get project: %w", err)
 	}
 
 	// Check if user has manager permissions for this project
@@ -450,7 +463,10 @@ func (r *mutationResolver) DeleteJiraConnection(ctx context.Context, id string) 
 
 	project, err := r.projectService.GetProject(ctx, projectsDomain.ProjectID(connection.ProjectID()))
 	if err != nil {
-		return false, fmt.Errorf("project not found")
+		if errors.Is(err, projectsDomain.ErrProjectNotFound) {
+			return false, err
+		}
+		return false, fmt.Errorf("failed to get project: %w", err)
 	}
 
 	// Check if user has manager permissions for this project

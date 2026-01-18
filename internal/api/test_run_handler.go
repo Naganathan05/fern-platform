@@ -2,6 +2,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -53,7 +54,12 @@ func (h *TestRunHandler) createTestRun(c *gin.Context) {
 	// Validate ProjectID
 	_, err := h.projectService.GetProject(c.Request.Context(), projectsDomain.ProjectID(input.ProjectID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Invalid project ID"})
+		if errors.Is(err, projectsDomain.ErrProjectNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Invalid project ID"})
+			return
+		}
+		h.logger.WithError(err).Error("Failed to validate project")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate project"})
 		return
 	}
 

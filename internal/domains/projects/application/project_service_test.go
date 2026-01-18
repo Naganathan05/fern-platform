@@ -145,14 +145,14 @@ func TestProjectService_DeleteProject(t *testing.T) {
 		projectID := domain.ProjectID("non-existent-project")
 
 		// Set up expectations
-		mockRepo.On("FindByProjectID", ctx, projectID).Return(nil, assert.AnError)
+		mockRepo.On("FindByProjectID", ctx, projectID).Return(nil, domain.ErrProjectNotFound)
 
 		// Act
 		err := service.DeleteProject(ctx, projectID)
 
 		// Assert
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to get project")
+		assert.Contains(t, err.Error(), "project not found")
 		mockRepo.AssertExpectations(t)
 	})
 
