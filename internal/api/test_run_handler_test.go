@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	tagsApp "github.com/guidewire-oss/fern-platform/internal/domains/tags/application"
 	projectsApp "github.com/guidewire-oss/fern-platform/internal/domains/projects/application"
 	projectsDomain "github.com/guidewire-oss/fern-platform/internal/domains/projects/domain"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/application"
@@ -469,12 +470,30 @@ var _ = Describe("TestRunHandler", func() {
 	})
 
 	Describe("getTestRunByRunID", func() {
-		It("should return not implemented", func() {
+		It("should return test run when found", func() {
+			expectedRun := &domain.TestRun{
+				ID:        1,
+				RunID:     "run-123",
+				ProjectID: "project-123",
+				Status:    "passed",
+			}
+			testRunRepo.On("GetByRunID", mock.Anything, "run-123").Return(expectedRun, nil)
+
 			req := httptest.NewRequest("GET", "/api/v1/test-runs/by-run-id/run-123", nil)
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
-			Expect(w.Code).To(Equal(http.StatusNotImplemented))
+			Expect(w.Code).To(Equal(http.StatusOK))
+		})
+
+		It("should return not found when run ID does not exist", func() {
+			testRunRepo.On("GetByRunID", mock.Anything, "nonexistent").Return(nil, errors.New("not found"))
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/by-run-id/nonexistent", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
 		})
 	})
 
@@ -614,7 +633,26 @@ var _ = Describe("TestRunHandler", func() {
 	})
 
 	Describe("updateTestRunStatus", func() {
-		It("should return not implemented", func() {
+		It("should update status successfully", func() {
+			existingRun := &domain.TestRun{
+				ID:        1,
+				RunID:     "run-123",
+				ProjectID: "project-123",
+				Status:    "running",
+			}
+			updatedRun := &domain.TestRun{
+				ID:        1,
+				RunID:     "run-123",
+				ProjectID: "project-123",
+				Status:    "completed",
+			}
+
+			testRunRepo.On("GetByRunID", mock.Anything, "run-123").Return(existingRun, nil)
+			testRunRepo.On("GetByID", mock.Anything, uint(1)).Return(existingRun, nil).Once()
+			suiteRunRepo.On("FindByTestRunID", mock.Anything, uint(1)).Return([]*domain.SuiteRun{}, nil)
+			testRunRepo.On("Update", mock.Anything, mock.Anything).Return(nil)
+			testRunRepo.On("GetByID", mock.Anything, uint(1)).Return(updatedRun, nil).Once()
+
 			requestBody := map[string]interface{}{
 				"status": "completed",
 			}
@@ -625,7 +663,23 @@ var _ = Describe("TestRunHandler", func() {
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
-			Expect(w.Code).To(Equal(http.StatusNotImplemented))
+			Expect(w.Code).To(Equal(http.StatusOK))
+		})
+
+		It("should return not found when run ID does not exist", func() {
+			testRunRepo.On("GetByRunID", mock.Anything, "nonexistent").Return(nil, errors.New("not found"))
+
+			requestBody := map[string]interface{}{
+				"status": "completed",
+			}
+			jsonBody, _ := json.Marshal(requestBody)
+
+			req := httptest.NewRequest("PUT", "/api/v1/admin/test-runs/nonexistent/status", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
 		})
 
 		It("should return bad request for missing status", func() {
@@ -642,12 +696,30 @@ var _ = Describe("TestRunHandler", func() {
 	})
 
 	Describe("deleteTestRun", func() {
-		It("should return not implemented", func() {
+		It("should delete test run successfully", func() {
+			existingRun := &domain.TestRun{
+				ID:        1,
+				RunID:     "run-123",
+				ProjectID: "project-123",
+			}
+			testRunRepo.On("GetByID", mock.Anything, uint(1)).Return(existingRun, nil)
+			testRunRepo.On("Delete", mock.Anything, uint(1)).Return(nil)
+
 			req := httptest.NewRequest("DELETE", "/api/v1/admin/test-runs/1", nil)
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
-			Expect(w.Code).To(Equal(http.StatusNotImplemented))
+			Expect(w.Code).To(Equal(http.StatusNoContent))
+		})
+
+		It("should return not found when test run does not exist", func() {
+			testRunRepo.On("GetByID", mock.Anything, uint(999)).Return(nil, errors.New("not found"))
+
+			req := httptest.NewRequest("DELETE", "/api/v1/admin/test-runs/999", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
 		})
 
 		It("should return bad request for invalid ID", func() {
@@ -833,12 +905,36 @@ var _ = Describe("TestRunHandler", func() {
 	})
 
 	Describe("bulkDeleteTestRuns", func() {
-		It("should return not implemented", func() {
+		It("should bulk delete test runs successfully", func() {
+			for _, id := range []uint{1, 2} {
+				existingRun := &domain.TestRun{ID: id, ProjectID: "project-123"}
+				testRunRepo.On("GetByID", mock.Anything, id).Return(existingRun, nil)
+				testRunRepo.On("Delete", mock.Anything, id).Return(nil)
+			}
+
+			requestBody := map[string]interface{}{
+				"ids": []uint{1, 2},
+			}
+			jsonBody, _ := json.Marshal(requestBody)
+
+			req := httptest.NewRequest("POST", "/api/v1/admin/test-runs/bulk-delete", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+			var response map[string]interface{}
+			err := json.Unmarshal(w.Body.Bytes(), &response)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(response["deleted"]).To(BeEquivalentTo(2))
+		})
+
+		It("should return bad request for missing body", func() {
 			req := httptest.NewRequest("POST", "/api/v1/admin/test-runs/bulk-delete", nil)
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
-			Expect(w.Code).To(Equal(http.StatusNotImplemented))
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
 		})
 	})
 
@@ -870,7 +966,7 @@ var _ = Describe("TestRunHandler", func() {
 				Metadata: map[string]interface{}{"key": "value"},
 			}
 
-			result := handler.convertTestRunToAPI(testRun)
+			result := convertTestRunToAPI(testRun)
 
 			Expect(result["id"]).To(Equal(uint(1)))
 			Expect(result["projectId"]).To(Equal("project-123"))
@@ -897,7 +993,7 @@ var _ = Describe("TestRunHandler", func() {
 				// StartTime will be zero value since it's not a pointer
 			}
 
-			result := handler.convertTestRunToAPI(testRun)
+			result := convertTestRunToAPI(testRun)
 
 			Expect(result["id"]).To(Equal(uint(1)))
 			Expect(result["projectId"]).To(Equal("project-123"))
@@ -917,7 +1013,7 @@ var _ = Describe("TestRunHandler", func() {
 				Tags:      nil,
 			}
 
-			result := handler.convertTestRunToAPI(testRun)
+			result := convertTestRunToAPI(testRun)
 
 			Expect(result["id"]).To(Equal(uint(1)))
 			Expect(result["tags"]).To(BeNil())
@@ -931,7 +1027,7 @@ var _ = Describe("TestRunHandler", func() {
 				Tags:      []domain.Tag{},
 			}
 
-			result := handler.convertTestRunToAPI(testRun)
+			result := convertTestRunToAPI(testRun)
 
 			Expect(result["id"]).To(Equal(uint(1)))
 			Expect(result["tags"]).To(HaveLen(0))
@@ -951,6 +1047,10 @@ var _ = Describe("TestRunHandler", func() {
 				"GET /api/v1/test-runs/stats",
 				"GET /api/v1/test-runs/recent",
 				"POST /api/v1/test-runs/:id/tags",
+				"GET /api/v1/test-runs/:id/suite-runs",
+				"GET /api/v1/test-runs/:id/suite-runs/:suiteId",
+				"GET /api/v1/test-runs/:id/suite-runs/:suiteId/spec-runs",
+				"GET /api/v1/test-runs/:id/suite-runs/:suiteId/spec-runs/:specId",
 			}
 
 			// Check admin routes exist
@@ -973,6 +1073,580 @@ var _ = Describe("TestRunHandler", func() {
 				}
 				Expect(found).To(BeTrue(), fmt.Sprintf("Route %s not found", expectedRoute))
 			}
+		})
+	})
+
+	Describe("getTestRunByRunID", func() {
+		It("should handle error when service fails", func() {
+			testRunRepo.On("GetByRunID", mock.Anything, "nonexistent").Return(nil, errors.New("not found"))
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/by-run-id/nonexistent", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
+		})
+	})
+
+	Describe("updateTestRunStatus", func() {
+		It("should handle missing status field", func() {
+			requestBody := map[string]interface{}{}
+			jsonBody, _ := json.Marshal(requestBody)
+
+			req := httptest.NewRequest("PUT", "/api/v1/admin/test-runs/run-123/status", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+	})
+
+	Describe("bulkDeleteTestRuns", func() {
+		It("should handle empty IDs list", func() {
+			requestBody := map[string]interface{}{
+				"ids": []uint{},
+			}
+			jsonBody, _ := json.Marshal(requestBody)
+
+			req := httptest.NewRequest("POST", "/api/v1/admin/test-runs/bulk-delete", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+	})
+
+	Describe("SetTagService", func() {
+		It("should set tag service", func() {
+			mockTagService := &tagsApp.TagService{}
+			handler.SetTagService(mockTagService)
+			Expect(handler.tagService).To(Equal(mockTagService))
+		})
+	})
+
+	Describe("getSuiteRuns", func() {
+		It("should get suite runs successfully", func() {
+			suiteRuns := []*domain.SuiteRun{
+				{ID: 1, TestRunID: 1, Name: "Suite 1"},
+				{ID: 2, TestRunID: 1, Name: "Suite 2"},
+			}
+			suiteRunRepo.On("FindByTestRunID", mock.Anything, uint(1)).Return(suiteRuns, nil).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+		})
+
+		It("should return bad request for invalid test run ID", func() {
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/invalid/suite-runs", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("should return internal server error when service fails", func() {
+			suiteRunRepo.On("FindByTestRunID", mock.Anything, uint(1)).Return(nil, errors.New("db error")).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusInternalServerError))
+		})
+	})
+
+	Describe("getSuiteRun", func() {
+		It("should get suite run successfully when parent matches", func() {
+			suiteRun := &domain.SuiteRun{ID: 2, TestRunID: 1, Name: "Suite 1"}
+			suiteRunRepo.On("GetByID", mock.Anything, uint(2)).Return(suiteRun, nil).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/2", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+		})
+
+		It("should return bad request for invalid test run ID", func() {
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/invalid/suite-runs/1", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("should return bad request for invalid suite run ID", func() {
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/invalid", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("should return not found when suite run doesn't exist", func() {
+			suiteRunRepo.On("GetByID", mock.Anything, uint(1)).Return(nil, domain.ErrNotFound).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("should return not found when suite belongs to different test run", func() {
+			suiteRun := &domain.SuiteRun{ID: 1, TestRunID: 2, Name: "Suite 1"}
+			suiteRunRepo.On("GetByID", mock.Anything, uint(1)).Return(suiteRun, nil).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("should return internal server error when repository fails unexpectedly", func() {
+			suiteRunRepo.On("GetByID", mock.Anything, uint(1)).Return(nil, errors.New("database connection failed")).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusInternalServerError))
+		})
+	})
+
+	Describe("getSpecRuns", func() {
+		It("should get spec runs successfully when parent matches", func() {
+			suiteRun := &domain.SuiteRun{ID: 2, TestRunID: 1, Name: "Suite 1"}
+			suiteRunRepo.On("GetByID", mock.Anything, uint(2)).Return(suiteRun, nil).Once()
+			specRuns := []*domain.SpecRun{
+				{ID: 3, SuiteRunID: 2, Name: "Spec 1"},
+				{ID: 4, SuiteRunID: 2, Name: "Spec 2"},
+			}
+			specRunRepo.On("FindBySuiteRunID", mock.Anything, uint(2)).Return(specRuns, nil).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/2/spec-runs", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+		})
+
+		It("should return bad request for invalid test run ID", func() {
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/invalid/suite-runs/1/spec-runs", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("should return bad request for invalid suite run ID", func() {
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/invalid/spec-runs", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("should return not found when suite belongs to different test run", func() {
+			suiteRun := &domain.SuiteRun{ID: 1, TestRunID: 2, Name: "Suite 1"}
+			suiteRunRepo.On("GetByID", mock.Anything, uint(1)).Return(suiteRun, nil).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1/spec-runs", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("should return empty list when suite is valid but has no spec runs", func() {
+			suiteRun := &domain.SuiteRun{ID: 1, TestRunID: 1, Name: "Suite 1"}
+			suiteRunRepo.On("GetByID", mock.Anything, uint(1)).Return(suiteRun, nil).Once()
+			specRunRepo.On("FindBySuiteRunID", mock.Anything, uint(1)).Return([]*domain.SpecRun{}, nil).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1/spec-runs", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+			var response []*domain.SpecRun
+			err := json.Unmarshal(w.Body.Bytes(), &response)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(response).To(HaveLen(0))
+		})
+
+		It("should return internal server error when suite validation fails", func() {
+			suiteRunRepo.On("GetByID", mock.Anything, uint(1)).Return(nil, errors.New("db error")).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1/spec-runs", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusInternalServerError))
+		})
+
+		It("should return internal server error when spec list lookup fails", func() {
+			suiteRun := &domain.SuiteRun{ID: 1, TestRunID: 1, Name: "Suite 1"}
+			suiteRunRepo.On("GetByID", mock.Anything, uint(1)).Return(suiteRun, nil).Once()
+			specRunRepo.On("FindBySuiteRunID", mock.Anything, uint(1)).Return(nil, errors.New("db error")).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1/spec-runs", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusInternalServerError))
+		})
+	})
+
+	Describe("getSpecRun", func() {
+		It("should get spec run successfully when full parent chain matches", func() {
+			specRun := &domain.SpecRun{ID: 3, SuiteRunID: 2, Name: "Spec 1"}
+			specRunRepo.On("GetByID", mock.Anything, uint(3)).Return(specRun, nil).Once()
+			suiteRun := &domain.SuiteRun{ID: 2, TestRunID: 1, Name: "Suite 1"}
+			suiteRunRepo.On("GetByID", mock.Anything, uint(2)).Return(suiteRun, nil).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/2/spec-runs/3", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+		})
+
+		It("should return bad request for invalid test run ID", func() {
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/invalid/suite-runs/1/spec-runs/1", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("should return bad request for invalid suite run ID", func() {
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/invalid/spec-runs/1", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("should return bad request for invalid spec run ID", func() {
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1/spec-runs/invalid", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("should return not found when spec run doesn't exist", func() {
+			specRunRepo.On("GetByID", mock.Anything, uint(1)).Return(nil, domain.ErrNotFound).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1/spec-runs/1", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("should return not found when spec belongs to different suite", func() {
+			specRun := &domain.SpecRun{ID: 1, SuiteRunID: 2, Name: "Spec 1"}
+			specRunRepo.On("GetByID", mock.Anything, uint(1)).Return(specRun, nil).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1/spec-runs/1", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("should return not found when parent suite belongs to different test run", func() {
+			specRun := &domain.SpecRun{ID: 1, SuiteRunID: 1, Name: "Spec 1"}
+			specRunRepo.On("GetByID", mock.Anything, uint(1)).Return(specRun, nil).Once()
+			suiteRun := &domain.SuiteRun{ID: 1, TestRunID: 2, Name: "Suite 1"}
+			suiteRunRepo.On("GetByID", mock.Anything, uint(1)).Return(suiteRun, nil).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1/spec-runs/1", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("should return internal server error when validation chain fails unexpectedly", func() {
+			specRun := &domain.SpecRun{ID: 1, SuiteRunID: 1, Name: "Spec 1"}
+			specRunRepo.On("GetByID", mock.Anything, uint(1)).Return(specRun, nil).Once()
+			suiteRunRepo.On("GetByID", mock.Anything, uint(1)).Return(nil, errors.New("db error")).Once()
+
+			req := httptest.NewRequest("GET", "/api/v1/test-runs/1/suite-runs/1/spec-runs/1", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusInternalServerError))
+		})
+	})
+
+	Describe("Public API Endpoints", func() {
+		var publicRouter *gin.Engine
+		var publicGroup *gin.RouterGroup
+
+		BeforeEach(func() {
+			publicRouter = gin.New()
+			publicGroup = publicRouter.Group("/api/v1")
+			handler.RegisterPublicRoutes(publicGroup)
+		})
+
+		Describe("recordTestRun", func() {
+			It("should record a test run successfully", func() {
+				req := TestRunRequest{
+					TestProjectID: "project-123",
+					GitBranch:     "main",
+					GitSha:        "abc123",
+					Environment:   "test",
+					Tags:          []Tag{},
+					SuiteRuns: []SuiteRun{
+						{
+							SuiteName: "Suite 1",
+							SpecRuns: []SpecRun{
+								{SpecDescription: "Spec 1", Status: "passed"},
+							},
+						},
+					},
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				testRunRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
+				testRunRepo.On("GetByRunID", mock.Anything, mock.Anything).Return(nil, errors.New("not found"))
+				suiteRunRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
+				specRunRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/test-runs", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusCreated))
+			})
+
+			It("should return bad request for empty body", func() {
+				httpReq := httptest.NewRequest("POST", "/api/v1/test-runs", nil)
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusBadRequest))
+			})
+		})
+
+		Describe("startTestRun", func() {
+			It("should start a test run successfully", func() {
+				req := map[string]interface{}{
+					"projectId": "project-123",
+					"branch":    "main",
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				testRunRepo.On("Create", mock.Anything, mock.Anything).Return(nil).Once()
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/test-runs/start", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusCreated))
+
+				var response map[string]interface{}
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(response).To(HaveKey("id"))
+				Expect(response).To(HaveKey("runId"))
+			})
+
+			It("should return bad request for missing projectId", func() {
+				req := map[string]interface{}{
+					"branch": "main",
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/test-runs/start", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusBadRequest))
+			})
+
+			It("should generate runId if not provided", func() {
+				req := map[string]interface{}{
+					"projectId": "project-123",
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				testRunRepo.On("Create", mock.Anything, mock.MatchedBy(func(tr *domain.TestRun) bool {
+					return tr.RunID != ""
+				})).Return(nil).Once()
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/test-runs/start", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusCreated))
+			})
+		})
+
+		Describe("completeTestRun", func() {
+			It("should return not found for nonexistent run", func() {
+				req := map[string]interface{}{
+					"runId":  "nonexistent",
+					"status": "passed",
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				testRunRepo.On("GetByRunID", mock.Anything, "nonexistent").Return(nil, errors.New("not found")).Once()
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/test-runs/complete", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusNotFound))
+			})
+
+			It("should return bad request for missing runId", func() {
+				req := map[string]interface{}{
+					"status": "passed",
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/test-runs/complete", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusBadRequest))
+			})
+		})
+
+		Describe("addSuiteRun", func() {
+			It("should add a suite run successfully", func() {
+				req := map[string]interface{}{
+					"testRunId": "run-123",
+					"suiteName": "Suite 1",
+					"status":    "passed",
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				testRunRepo.On("GetByRunID", mock.Anything, "run-123").Return(&domain.TestRun{
+					ID:    1,
+					RunID: "run-123",
+				}, nil).Once()
+				suiteRunRepo.On("Create", mock.Anything, mock.Anything).Return(nil).Once()
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/suite-runs", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusCreated))
+
+				var response map[string]interface{}
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(response).To(HaveKey("id"))
+				Expect(response).To(HaveKey("suiteName"))
+			})
+
+			It("should return not found for nonexistent test run", func() {
+				req := map[string]interface{}{
+					"testRunId": "nonexistent",
+					"suiteName": "Suite 1",
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				testRunRepo.On("GetByRunID", mock.Anything, "nonexistent").Return(nil, errors.New("not found")).Once()
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/suite-runs", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusNotFound))
+			})
+
+			It("should return bad request for missing required fields", func() {
+				req := map[string]interface{}{
+					"testRunId": "run-123",
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/suite-runs", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusBadRequest))
+			})
+		})
+
+		Describe("addSpecRun", func() {
+			It("should return bad request for missing required fields", func() {
+				req := map[string]interface{}{
+					"specName": "Spec 1",
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/spec-runs", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusBadRequest))
+			})
+		})
+
+		Describe("updateTestRunPublic", func() {
+			It("should return not implemented", func() {
+				req := map[string]interface{}{
+					"status": "passed",
+				}
+				jsonBody, _ := json.Marshal(req)
+
+				httpReq := httptest.NewRequest("PUT", "/api/v1/test-runs/1", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusNotImplemented))
+			})
+		})
+
+		Describe("RegisterPublicRoutes", func() {
+			It("should register all public routes correctly", func() {
+				routes := publicRouter.Routes()
+
+				publicRoutes := []string{
+					"POST /api/v1/test-runs",
+					"POST /api/v1/test-runs/start",
+					"POST /api/v1/test-runs/complete",
+					"POST /api/v1/suite-runs",
+					"POST /api/v1/spec-runs",
+					"PUT /api/v1/test-runs/:id",
+				}
+
+				for _, expectedRoute := range publicRoutes {
+					found := false
+					for _, route := range routes {
+						if fmt.Sprintf("%s %s", route.Method, route.Path) == expectedRoute {
+							found = true
+							break
+						}
+					}
+					Expect(found).To(BeTrue(), fmt.Sprintf("Route %s not found", expectedRoute))
+				}
+			})
 		})
 	})
 })
