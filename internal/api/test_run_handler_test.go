@@ -14,6 +14,7 @@ import (
 	tagsApp "github.com/guidewire-oss/fern-platform/internal/domains/tags/application"
 	projectsApp "github.com/guidewire-oss/fern-platform/internal/domains/projects/application"
 	projectsDomain "github.com/guidewire-oss/fern-platform/internal/domains/projects/domain"
+	testMocks "github.com/guidewire-oss/fern-platform/internal/testhelpers"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/application"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/domain"
 	"github.com/guidewire-oss/fern-platform/pkg/config"
@@ -211,8 +212,8 @@ var _ = Describe("TestRunHandler", func() {
 		testRunRepo    *MockTestRunRepository
 		suiteRunRepo   *MockSuiteRunRepository
 		specRunRepo    *MockSpecRunRepository
-		projectRepo    *MockProjectRepository
-		permRepo       *MockProjectPermissionRepository
+		projectRepo    *testMocks.MockProjectRepository
+		permRepo       *testMocks.MockProjectPermissionRepository
 		testingService *application.TestRunService
 		projectService *projectsApp.ProjectService
 		userGroup      *gin.RouterGroup
@@ -235,8 +236,8 @@ var _ = Describe("TestRunHandler", func() {
 		testRunRepo = new(MockTestRunRepository)
 		suiteRunRepo = new(MockSuiteRunRepository)
 		specRunRepo = new(MockSpecRunRepository)
-		projectRepo = new(MockProjectRepository)
-		permRepo = new(MockProjectPermissionRepository)
+		projectRepo = new(testMocks.MockProjectRepository)
+		permRepo = new(testMocks.MockProjectPermissionRepository)
 
 		// Create service with mocks
 		testingService = application.NewTestRunService(testRunRepo, suiteRunRepo, specRunRepo)

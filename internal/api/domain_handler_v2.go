@@ -43,7 +43,7 @@ func NewDomainHandlerV2(
 	logger *logging.Logger,
 ) *DomainHandlerV2 {
 	baseHandler := NewBaseHandler(logger)
-	testRunHandler := NewTestRunHandler(testingService, logger)
+	testRunHandler := NewTestRunHandler(testingService, projectService, logger)
 	testRunHandler.SetTagService(tagService)
 	return &DomainHandlerV2{
 		authHandler:           NewAuthHandler(authMiddleware, logger),
