@@ -358,6 +358,32 @@ var _ = Describe("TestRunHandler", func() {
 			projectRepo.AssertExpectations(GinkgoT())
 		})
 
+		It("should return internal server error when project validation fails with non-notfound error", func() {
+			projectRepo.On("FindByProjectID", mock.Anything, projectsDomain.ProjectID("project-123")).
+				Return(nil, errors.New("db error")).Once()
+
+			requestBody := map[string]interface{}{
+				"projectId": "project-123",
+				"branch":    "main",
+			}
+			jsonBody, _ := json.Marshal(requestBody)
+
+			req := httptest.NewRequest("POST", "/api/v1/admin/test-runs", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusInternalServerError))
+
+			var response map[string]interface{}
+			err := json.Unmarshal(w.Body.Bytes(), &response)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(response["error"]).To(Equal("Failed to validate project"))
+
+			testRunRepo.AssertNotCalled(GinkgoT(), "Create", mock.Anything, mock.Anything)
+			projectRepo.AssertExpectations(GinkgoT())
+		})
+
 		It("should return internal server error when service fails", func() {
 			project, err := projectsDomain.NewProject(projectsDomain.ProjectID("project-123"), "Test Project", projectsDomain.Team("team-1"))
 			Expect(err).NotTo(HaveOccurred())
