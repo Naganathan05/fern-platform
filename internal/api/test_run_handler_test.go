@@ -12,6 +12,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	tagsApp "github.com/guidewire-oss/fern-platform/internal/domains/tags/application"
+	projectsApp "github.com/guidewire-oss/fern-platform/internal/domains/projects/application"
+	projectsDomain "github.com/guidewire-oss/fern-platform/internal/domains/projects/domain"
+	testMocks "github.com/guidewire-oss/fern-platform/internal/testhelpers"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/application"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/domain"
 	"github.com/guidewire-oss/fern-platform/pkg/config"
@@ -209,7 +212,10 @@ var _ = Describe("TestRunHandler", func() {
 		testRunRepo    *MockTestRunRepository
 		suiteRunRepo   *MockSuiteRunRepository
 		specRunRepo    *MockSpecRunRepository
+		projectRepo    *testMocks.MockProjectRepository
+		permRepo       *testMocks.MockProjectPermissionRepository
 		testingService *application.TestRunService
+		projectService *projectsApp.ProjectService
 		userGroup      *gin.RouterGroup
 		adminGroup     *gin.RouterGroup
 	)
@@ -230,12 +236,15 @@ var _ = Describe("TestRunHandler", func() {
 		testRunRepo = new(MockTestRunRepository)
 		suiteRunRepo = new(MockSuiteRunRepository)
 		specRunRepo = new(MockSpecRunRepository)
+		projectRepo = new(testMocks.MockProjectRepository)
+		permRepo = new(testMocks.MockProjectPermissionRepository)
 
 		// Create service with mocks
 		testingService = application.NewTestRunService(testRunRepo, suiteRunRepo, specRunRepo)
+		projectService = projectsApp.NewProjectService(projectRepo, permRepo)
 
 		// Create handler
-		handler = NewTestRunHandler(testingService, logger)
+		handler = NewTestRunHandler(testingService, projectService, logger)
 
 		// Setup router with groups
 		router = gin.New()
@@ -248,6 +257,10 @@ var _ = Describe("TestRunHandler", func() {
 
 	Describe("createTestRun", func() {
 		It("should create a test run successfully", func() {
+			project, err := projectsDomain.NewProject(projectsDomain.ProjectID("project-123"), "Test Project", projectsDomain.Team("team-1"))
+			Expect(err).NotTo(HaveOccurred())
+			projectRepo.On("FindByProjectID", mock.Anything, projectsDomain.ProjectID("project-123")).Return(project, nil).Once()
+
 			// Prepare request body
 			requestBody := map[string]interface{}{
 				"projectId": "project-123",
@@ -269,7 +282,7 @@ var _ = Describe("TestRunHandler", func() {
 			Expect(w.Code).To(Equal(http.StatusCreated))
 
 			var response map[string]interface{}
-			err := json.Unmarshal(w.Body.Bytes(), &response)
+			err = json.Unmarshal(w.Body.Bytes(), &response)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(response["projectId"]).To(Equal("project-123"))
 			Expect(response["branch"]).To(Equal("main"))
@@ -277,9 +290,14 @@ var _ = Describe("TestRunHandler", func() {
 			Expect(response["tags"]).To(Equal([]interface{}{"tag1", "tag2"}))
 
 			testRunRepo.AssertExpectations(GinkgoT())
+			projectRepo.AssertExpectations(GinkgoT())
 		})
 
 		It("should create a test run with custom ID", func() {
+			project, err := projectsDomain.NewProject(projectsDomain.ProjectID("project-123"), "Test Project", projectsDomain.Team("team-1"))
+			Expect(err).NotTo(HaveOccurred())
+			projectRepo.On("FindByProjectID", mock.Anything, projectsDomain.ProjectID("project-123")).Return(project, nil).Once()
+
 			requestBody := map[string]interface{}{
 				"id":        "custom-id-123",
 				"projectId": "project-123",
@@ -297,6 +315,7 @@ var _ = Describe("TestRunHandler", func() {
 
 			Expect(w.Code).To(Equal(http.StatusCreated))
 			testRunRepo.AssertExpectations(GinkgoT())
+			projectRepo.AssertExpectations(GinkgoT())
 		})
 
 		It("should return bad request for missing required fields", func() {
@@ -313,7 +332,63 @@ var _ = Describe("TestRunHandler", func() {
 			Expect(w.Code).To(Equal(http.StatusBadRequest))
 		})
 
+		It("should return not found when project doesn't exist", func() {
+			projectRepo.On("FindByProjectID", mock.Anything, projectsDomain.ProjectID("missing-project")).
+				Return(nil, projectsDomain.ErrProjectNotFound).Once()
+
+			requestBody := map[string]interface{}{
+				"projectId": "missing-project",
+				"branch":    "main",
+			}
+			jsonBody, _ := json.Marshal(requestBody)
+
+			req := httptest.NewRequest("POST", "/api/v1/admin/test-runs", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusNotFound))
+
+			var response map[string]interface{}
+			err := json.Unmarshal(w.Body.Bytes(), &response)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(response["error"]).To(Equal("Invalid project ID"))
+
+			testRunRepo.AssertNotCalled(GinkgoT(), "Create", mock.Anything, mock.Anything)
+			projectRepo.AssertExpectations(GinkgoT())
+		})
+
+		It("should return internal server error when project validation fails with non-notfound error", func() {
+			projectRepo.On("FindByProjectID", mock.Anything, projectsDomain.ProjectID("project-123")).
+				Return(nil, errors.New("db error")).Once()
+
+			requestBody := map[string]interface{}{
+				"projectId": "project-123",
+				"branch":    "main",
+			}
+			jsonBody, _ := json.Marshal(requestBody)
+
+			req := httptest.NewRequest("POST", "/api/v1/admin/test-runs", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusInternalServerError))
+
+			var response map[string]interface{}
+			err := json.Unmarshal(w.Body.Bytes(), &response)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(response["error"]).To(Equal("Failed to validate project"))
+
+			testRunRepo.AssertNotCalled(GinkgoT(), "Create", mock.Anything, mock.Anything)
+			projectRepo.AssertExpectations(GinkgoT())
+		})
+
 		It("should return internal server error when service fails", func() {
+			project, err := projectsDomain.NewProject(projectsDomain.ProjectID("project-123"), "Test Project", projectsDomain.Team("team-1"))
+			Expect(err).NotTo(HaveOccurred())
+			projectRepo.On("FindByProjectID", mock.Anything, projectsDomain.ProjectID("project-123")).Return(project, nil).Once()
+
 			requestBody := map[string]interface{}{
 				"projectId": "project-123",
 			}
@@ -328,9 +403,14 @@ var _ = Describe("TestRunHandler", func() {
 
 			Expect(w.Code).To(Equal(http.StatusInternalServerError))
 			testRunRepo.AssertExpectations(GinkgoT())
+			projectRepo.AssertExpectations(GinkgoT())
 		})
 
 		It("should handle duplicate test run creation", func() {
+			project, err := projectsDomain.NewProject(projectsDomain.ProjectID("project-123"), "Test Project", projectsDomain.Team("team-1"))
+			Expect(err).NotTo(HaveOccurred())
+			projectRepo.On("FindByProjectID", mock.Anything, projectsDomain.ProjectID("project-123")).Return(project, nil).Once()
+
 			requestBody := map[string]interface{}{
 				"id":        "duplicate-id",
 				"projectId": "project-123",
@@ -355,6 +435,7 @@ var _ = Describe("TestRunHandler", func() {
 
 			Expect(w.Code).To(Equal(http.StatusCreated))
 			testRunRepo.AssertExpectations(GinkgoT())
+			projectRepo.AssertExpectations(GinkgoT())
 		})
 	})
 
