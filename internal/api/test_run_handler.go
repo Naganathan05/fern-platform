@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	projectsApp "github.com/guidewire-oss/fern-platform/internal/domains/projects/application"
+	projectsDomain "github.com/guidewire-oss/fern-platform/internal/domains/projects/domain"
 	tagsApp "github.com/guidewire-oss/fern-platform/internal/domains/tags/application"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/application"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/domain"
-	projectsApp "github.com/guidewire-oss/fern-platform/internal/domains/projects/application"
-	projectsDomain "github.com/guidewire-oss/fern-platform/internal/domains/projects/domain"
 	"github.com/guidewire-oss/fern-platform/pkg/logging"
 )
 
@@ -87,6 +88,10 @@ func (h *TestRunHandler) createTestRun(c *gin.Context) {
 
 	// Create test run using domain service
 	if _, _, err := h.testingService.CreateTestRun(c.Request.Context(), testRun); err != nil {
+		if strings.Contains(err.Error(), "invalid test run") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		h.logger.WithError(err).Error("Failed to create test run")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -516,8 +521,6 @@ func convertTestRunToAPI(tr *domain.TestRun) gin.H {
 		"updatedAt":    tr.EndTime,
 	}
 }
-
-
 
 // --- Public (unauthenticated) test submission endpoints ---
 // These are compatible with the legacy Fern Reporter API

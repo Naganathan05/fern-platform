@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	tagsApp "github.com/guidewire-oss/fern-platform/internal/domains/tags/application"
 	projectsApp "github.com/guidewire-oss/fern-platform/internal/domains/projects/application"
 	projectsDomain "github.com/guidewire-oss/fern-platform/internal/domains/projects/domain"
-	testMocks "github.com/guidewire-oss/fern-platform/internal/testhelpers"
+	tagsApp "github.com/guidewire-oss/fern-platform/internal/domains/tags/application"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/application"
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/domain"
+	testMocks "github.com/guidewire-oss/fern-platform/internal/testhelpers"
 	"github.com/guidewire-oss/fern-platform/pkg/config"
 	"github.com/guidewire-oss/fern-platform/pkg/logging"
 	. "github.com/onsi/ginkgo/v2"
@@ -330,6 +330,45 @@ var _ = Describe("TestRunHandler", func() {
 			router.ServeHTTP(w, req)
 
 			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("should return bad request when test run validation fails", func() {
+			project, err := projectsDomain.NewProject(
+				projectsDomain.ProjectID("project-123"),
+				"Test Project",
+				projectsDomain.Team("team-1"),
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			projectRepo.
+				On("FindByProjectID", mock.Anything, projectsDomain.ProjectID("project-123")).
+				Return(project, nil).
+				Once()
+
+			testRunRepo.
+				On("Create", mock.Anything, mock.Anything).
+				Return(errors.New("invalid test run: spec name too long")).
+				Once()
+
+			requestBody := map[string]interface{}{
+				"projectId": "project-123",
+			}
+			jsonBody, _ := json.Marshal(requestBody)
+
+			req := httptest.NewRequest("POST", "/api/v1/admin/test-runs", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+
+			var response map[string]interface{}
+			err = json.Unmarshal(w.Body.Bytes(), &response)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(response["error"]).To(ContainSubstring("invalid test run"))
+			testRunRepo.AssertExpectations(GinkgoT())
+			projectRepo.AssertExpectations(GinkgoT())
 		})
 
 		It("should return not found when project doesn't exist", func() {
