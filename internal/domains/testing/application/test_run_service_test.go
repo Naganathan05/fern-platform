@@ -257,6 +257,91 @@ var _ = Describe("TestRunService", Label("unit", "application", "testing"), func
 			mockTestRunRepo.AssertExpectations(GinkgoT())
 		})
 
+		It("should allow test run with spec name of length less than max length", func() {
+			validName := make([]byte, 200)
+			for i := range validName {
+				validName[i] = 'a'
+			}
+
+			testRun := &domain.TestRun{
+				ProjectID: "proj-123",
+				SuiteRuns: []domain.SuiteRun{
+					{
+						Name: "suite-1",
+						SpecRuns: []*domain.SpecRun{
+							{
+								Name: string(validName),
+							},
+						},
+					},
+				},
+			}
+
+			mockTestRunRepo.On("Create", ctx, testRun).Return(nil)
+
+			result, alreadyExisted, err := service.CreateTestRun(ctx, testRun)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).NotTo(BeNil())
+			Expect(alreadyExisted).To(BeFalse())
+
+			mockTestRunRepo.AssertExpectations(GinkgoT())
+		})
+
+		It("should return error when one of the spec name exceeds max length", func() {
+			longName := make([]byte, 256)
+			for i := range longName {
+				longName[i] = 'a'
+			}
+
+			testRun := &domain.TestRun{
+				ProjectID: "proj-123",
+				SuiteRuns: []domain.SuiteRun{
+					{
+						Name: "suite-1",
+						SpecRuns: []*domain.SpecRun{
+							{
+								Name: string(longName),
+							},
+						},
+					},
+				},
+			}
+
+			result, alreadyExisted, err := service.CreateTestRun(ctx, testRun)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("invalid test run"))
+			Expect(result).To(BeNil())
+			Expect(alreadyExisted).To(BeFalse())
+
+			mockTestRunRepo.AssertNotCalled(GinkgoT(), "Create", mock.Anything, mock.Anything)
+		})
+
+		It("should ignore nil spec runs during validation", func() {
+			testRun := &domain.TestRun{
+				ProjectID: "proj-123",
+				SuiteRuns: []domain.SuiteRun{
+					{
+						Name: "suite-1",
+						SpecRuns: []*domain.SpecRun{
+							nil,
+						},
+					},
+				},
+			}
+
+			mockTestRunRepo.On("Create", ctx, testRun).Return(nil)
+
+			result, alreadyExisted, err := service.CreateTestRun(ctx, testRun)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).NotTo(BeNil())
+			Expect(alreadyExisted).To(BeFalse())
+
+			mockTestRunRepo.AssertExpectations(GinkgoT())
+		})
+
 		It("should return error when repository fails", func() {
 			testRun := &domain.TestRun{
 				RunID:     "test-123",
