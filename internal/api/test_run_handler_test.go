@@ -1504,6 +1504,39 @@ var _ = Describe("TestRunHandler", func() {
 
 				Expect(w.Code).To(Equal(http.StatusBadRequest))
 			})
+
+			It("should return bad request when test run validation fails", func() {
+				req := TestRunRequest{
+					TestProjectID: "project-123",
+					SuiteRuns: []SuiteRun{
+						{
+							SuiteName: "Suite 1",
+							SpecRuns: []SpecRun{
+								{
+									SpecDescription: string(make([]byte, 300)), // simulate long spec name
+									Status:          "passed",
+								},
+							},
+						},
+					},
+				}
+
+				jsonBody, _ := json.Marshal(req)
+
+				httpReq := httptest.NewRequest("POST", "/api/v1/test-runs", bytes.NewBuffer(jsonBody))
+				httpReq.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				publicRouter.ServeHTTP(w, httpReq)
+
+				Expect(w.Code).To(Equal(http.StatusBadRequest))
+
+				var response map[string]interface{}
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(response["error"]).To(ContainSubstring("invalid test run"))
+				testRunRepo.AssertNotCalled(GinkgoT(), "Create", mock.Anything, mock.Anything)
+			})
 		})
 
 		Describe("startTestRun", func() {

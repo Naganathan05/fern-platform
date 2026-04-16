@@ -602,6 +602,10 @@ func (h *TestRunHandler) recordTestRun(c *gin.Context) {
 		createdTestRun, alreadyExisted, err := h.testingService.CreateTestRun(c.Request.Context(), newTestRun)
 		h.logger.Debug("Test run creation result", "alreadyExisted", alreadyExisted, "runID", runID)
 		if err != nil {
+			if strings.Contains(err.Error(), "invalid test run") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
