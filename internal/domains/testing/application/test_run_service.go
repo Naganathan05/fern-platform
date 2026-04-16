@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/domain"
 	"github.com/guidewire-oss/fern-platform/pkg/database"
@@ -51,7 +52,7 @@ func ValidateTestRun(testRun *domain.TestRun) error {
 			if spec == nil {
 				continue
 			}
-			if len(spec.Name) > MaxSpecNameLength {
+			if utf8.RuneCountInString(spec.Name) > MaxSpecNameLength {
 				return domain.GetInvalidTestRunError(
 					fmt.Sprintf(
 						"spec name exceeds %d characters (suite: %s, spec: %s)",
@@ -71,6 +72,10 @@ func ValidateTestRun(testRun *domain.TestRun) error {
 // Returns the test run (existing or newly created), a flag indicating if it already existed, and any error
 func (s *TestRunService) CreateTestRun(ctx context.Context, testRun *domain.TestRun) (*domain.TestRun, bool, error) {
 	// Validate test run
+	if testRun == nil {
+		return nil, false, fmt.Errorf("testRun cannot be nil")
+	}
+
 	if testRun.ProjectID == "" {
 		return nil, false, fmt.Errorf("project ID is required")
 	}
@@ -281,6 +286,16 @@ func (s *TestRunService) CreateTestRunWithSuites(ctx context.Context, testRun *d
 		if len(suite.SpecRuns) > 0 {
 			for _, spec := range suite.SpecRuns {
 				spec.SuiteRunID = suite.ID
+				if utf8.RuneCountInString(spec.Name) > MaxSpecNameLength {
+					return domain.GetInvalidTestRunError(
+						fmt.Sprintf(
+							"spec name exceeds %d characters (suite: %s, spec: %s)",
+							MaxSpecNameLength,
+							suite.Name,
+							spec.Name,
+						),
+					)
+				}
 			}
 			if err := s.specRunRepo.CreateBatch(ctx, suite.SpecRuns); err != nil {
 				return fmt.Errorf("failed to create spec runs: %w", err)
