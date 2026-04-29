@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -238,6 +239,14 @@ var _ = Describe("TestRunService", Label("unit", "application", "testing"), func
 		fixtures = testhelpers.NewFixtureBuilder()
 	})
 
+	Describe("ValidateTestRun", func() {
+		It("should return error when testRun is nil", func() {
+			err := application.ValidateTestRun(nil)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("testRun cannot be nil"))
+		})
+	})
+
 	Describe("CreateTestRun", func() {
 		It("should create a test run successfully", func() {
 			testRun := &domain.TestRun{
@@ -255,6 +264,15 @@ var _ = Describe("TestRunService", Label("unit", "application", "testing"), func
 			Expect(err).NotTo(HaveOccurred())
 
 			mockTestRunRepo.AssertExpectations(GinkgoT())
+		})
+
+		It("should return error when testRun is nil", func() {
+			result, alreadyExisted, err := service.CreateTestRun(ctx, nil)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("testRun cannot be nil"))
+			Expect(result).To(BeNil())
+			Expect(alreadyExisted).To(BeFalse())
 		})
 
 		It("should allow test run with spec name of length less than max length", func() {
@@ -289,10 +307,7 @@ var _ = Describe("TestRunService", Label("unit", "application", "testing"), func
 		})
 
 		It("should return error when one of the spec name exceeds max length", func() {
-			longName := make([]byte, 256)
-			for i := range longName {
-				longName[i] = 'a'
-			}
+			longName := strings.Repeat("a", 256)
 
 			testRun := &domain.TestRun{
 				ProjectID: "proj-123",
@@ -301,7 +316,35 @@ var _ = Describe("TestRunService", Label("unit", "application", "testing"), func
 						Name: "suite-1",
 						SpecRuns: []*domain.SpecRun{
 							{
-								Name: string(longName),
+								Name: longName,
+							},
+						},
+					},
+				},
+			}
+
+			result, alreadyExisted, err := service.CreateTestRun(ctx, testRun)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("invalid test run"))
+			Expect(result).To(BeNil())
+			Expect(alreadyExisted).To(BeFalse())
+
+			mockTestRunRepo.AssertNotCalled(GinkgoT(), "Create", mock.Anything, mock.Anything)
+		})
+
+		It("should validate spec name length using rune count (unicode)", func() {
+			// each "你" is 1 rune but 3 bytes
+			longName := strings.Repeat("你", 256)
+
+			testRun := &domain.TestRun{
+				ProjectID: "proj-123",
+				SuiteRuns: []domain.SuiteRun{
+					{
+						Name: "suite-1",
+						SpecRuns: []*domain.SpecRun{
+							{
+								Name: longName,
 							},
 						},
 					},
@@ -730,6 +773,36 @@ var _ = Describe("TestRunService", Label("unit", "application", "testing"), func
 
 			mockTestRunRepo.AssertExpectations(GinkgoT())
 			mockSuiteRepo.AssertExpectations(GinkgoT())
+		})
+
+		It("should return error when spec name exceeds max length in CreateTestRunWithSuites", func() {
+			longName := strings.Repeat("a", 256)
+
+			testRun := &domain.TestRun{
+				ProjectID: "proj-123",
+				RunID:     "test-123",
+				Status:    "running",
+			}
+
+			suites := []domain.SuiteRun{
+				{
+					Name: "Suite 1",
+					SpecRuns: []*domain.SpecRun{
+						{
+							Name: longName,
+						},
+					},
+				},
+			}
+
+			mockTestRunRepo.On("Create", ctx, testRun).Return(nil)
+			mockSuiteRepo.On("Create", ctx, mock.Anything).Return(nil)
+
+			err := service.CreateTestRunWithSuites(ctx, testRun, suites)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("invalid test run"))
+			mockSpecRepo.AssertNotCalled(GinkgoT(), "CreateBatch", mock.Anything, mock.Anything)
 		})
 
 		It("should return error when test run creation fails", func() {
