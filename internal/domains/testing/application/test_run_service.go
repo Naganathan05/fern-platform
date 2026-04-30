@@ -261,42 +261,38 @@ func (s *TestRunService) updateSuiteStatistics(ctx context.Context, suiteRunID u
 
 // CreateTestRunWithSuites creates a test run with all its suites and specs in one transaction
 func (s *TestRunService) CreateTestRunWithSuites(ctx context.Context, testRun *domain.TestRun, suites []domain.SuiteRun) error {
-	// Create the test run
-	createdTestRun, _, err := s.CreateTestRun(ctx, testRun)
-	if err != nil {
+	// Validate suite runs for test spec name length
+	testRun.SuiteRuns = suites
+	if err := ValidateTestRun(testRun); err != nil {
 		return err
 	}
-
-	// Use the returned test run (either new or existing)
-	if createdTestRun != nil {
-		testRun = createdTestRun
-	}
+	testRun.SuiteRuns = nil
 
 	// Always add the suite runs, whether test run is new or existing
 	// This handles the concurrent creation case where another thread created the test run
 
 	// Create all suites
+	createdTestRun, _, err := s.CreateTestRun(ctx, testRun)
+	if err != nil {
+		return err
+	}
+
+	if createdTestRun != nil {
+		testRun = createdTestRun
+	}
+
+	// Create suites + specs
 	for _, suite := range suites {
 		suite.TestRunID = testRun.ID
 		if err := s.suiteRunRepo.Create(ctx, &suite); err != nil {
 			return fmt.Errorf("failed to create suite run: %w", err)
 		}
 
-		// Create specs for this suite
 		if len(suite.SpecRuns) > 0 {
 			for _, spec := range suite.SpecRuns {
 				spec.SuiteRunID = suite.ID
-				if utf8.RuneCountInString(spec.Name) > MaxSpecNameLength {
-					return domain.GetInvalidTestRunError(
-						fmt.Sprintf(
-							"spec name exceeds %d characters (suite: %s, spec: %s)",
-							MaxSpecNameLength,
-							suite.Name,
-							spec.Name,
-						),
-					)
-				}
 			}
+
 			if err := s.specRunRepo.CreateBatch(ctx, suite.SpecRuns); err != nil {
 				return fmt.Errorf("failed to create spec runs: %w", err)
 			}
