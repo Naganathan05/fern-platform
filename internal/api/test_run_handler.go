@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -88,7 +87,7 @@ func (h *TestRunHandler) createTestRun(c *gin.Context) {
 
 	// Create test run using domain service
 	if _, _, err := h.testingService.CreateTestRun(c.Request.Context(), testRun); err != nil {
-		if strings.Contains(err.Error(), "invalid test run") {
+		if errors.Is(err, domain.ErrInvalidTestRun) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -602,7 +601,7 @@ func (h *TestRunHandler) recordTestRun(c *gin.Context) {
 		createdTestRun, alreadyExisted, err := h.testingService.CreateTestRun(c.Request.Context(), newTestRun)
 		h.logger.Debug("Test run creation result", "alreadyExisted", alreadyExisted, "runID", runID)
 		if err != nil {
-			if strings.Contains(err.Error(), "invalid test run") {
+			if errors.Is(err, domain.ErrInvalidTestRun) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}

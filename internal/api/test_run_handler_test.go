@@ -347,7 +347,7 @@ var _ = Describe("TestRunHandler", func() {
 
 			testRunRepo.
 				On("Create", mock.Anything, mock.Anything).
-				Return(errors.New("invalid test run: spec name too long")).
+				Return(fmt.Errorf("%w: spec name too long", domain.ErrInvalidTestRun)).
 				Once()
 
 			requestBody := map[string]interface{}{

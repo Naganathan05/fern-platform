@@ -53,13 +53,12 @@ func ValidateTestRun(testRun *domain.TestRun) error {
 				continue
 			}
 			if utf8.RuneCountInString(spec.Name) > MaxSpecNameLength {
-				return domain.GetInvalidTestRunError(
-					fmt.Sprintf(
-						"spec name exceeds %d characters (suite: %s, spec: %s)",
-						MaxSpecNameLength,
-						suite.Name,
-						spec.Name,
-					),
+				return fmt.Errorf(
+					"%w: spec name exceeds %d characters (suite: %s, spec: %s)",
+					domain.ErrInvalidTestRun,
+					MaxSpecNameLength,
+					suite.Name,
+					spec.Name,
 				)
 			}
 		}
