@@ -775,6 +775,26 @@ var _ = Describe("TestRunService", Label("unit", "application", "testing"), func
 			mockSuiteRepo.AssertExpectations(GinkgoT())
 		})
 
+		It("should return error when testRun is nil", func() {
+			suites := []domain.SuiteRun{
+				{
+					Name: "Suite 1",
+					SpecRuns: []*domain.SpecRun{
+						{Name: "Spec 1"},
+					},
+				},
+			}
+
+			err := service.CreateTestRunWithSuites(ctx, nil, suites)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("testRun cannot be nil"))
+
+			mockTestRunRepo.AssertNotCalled(GinkgoT(), "Create", mock.Anything, mock.Anything)
+			mockSuiteRepo.AssertNotCalled(GinkgoT(), "Create", mock.Anything, mock.Anything)
+			mockSpecRepo.AssertNotCalled(GinkgoT(), "CreateBatch", mock.Anything, mock.Anything)
+		})
+
 		It("should return error when spec name exceeds max length in CreateTestRunWithSuites", func() {
 			longName := strings.Repeat("a", 256)
 

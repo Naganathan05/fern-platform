@@ -260,6 +260,10 @@ func (s *TestRunService) updateSuiteStatistics(ctx context.Context, suiteRunID u
 
 // CreateTestRunWithSuites creates a test run with all its suites and specs in one transaction
 func (s *TestRunService) CreateTestRunWithSuites(ctx context.Context, testRun *domain.TestRun, suites []domain.SuiteRun) error {
+	if testRun == nil {
+		return fmt.Errorf("testRun cannot be nil")
+	}
+
 	// Validate suite runs for test spec name length
 	testRun.SuiteRuns = suites
 	if err := ValidateTestRun(testRun); err != nil {
