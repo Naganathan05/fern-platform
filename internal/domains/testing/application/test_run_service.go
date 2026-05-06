@@ -6,10 +6,15 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/guidewire-oss/fern-platform/internal/domains/testing/domain"
 	"github.com/guidewire-oss/fern-platform/pkg/database"
 	"gorm.io/gorm"
+)
+
+const (
+	MaxSpecNameLength = 255
 )
 
 // ErrNotFound is returned when a resource is not found or parent-child validation fails
@@ -36,12 +41,47 @@ func NewTestRunService(
 	}
 }
 
+// ValidateTestRun does validation of test run details
+func ValidateTestRun(testRun *domain.TestRun) error {
+	if testRun == nil {
+		return fmt.Errorf("testRun cannot be nil")
+	}
+
+	for _, suite := range testRun.SuiteRuns {
+		for _, spec := range suite.SpecRuns {
+			if spec == nil {
+				continue
+			}
+			if utf8.RuneCountInString(spec.Name) > MaxSpecNameLength {
+				return fmt.Errorf(
+					"%w: spec name exceeds %d characters (suite: %s, spec: %s)",
+					domain.ErrInvalidTestRun,
+					MaxSpecNameLength,
+					suite.Name,
+					spec.Name,
+				)
+			}
+		}
+	}
+
+	return nil
+}
+
 // CreateTestRun creates a new test run
 // Returns the test run (existing or newly created), a flag indicating if it already existed, and any error
 func (s *TestRunService) CreateTestRun(ctx context.Context, testRun *domain.TestRun) (*domain.TestRun, bool, error) {
 	// Validate test run
+	if testRun == nil {
+		return nil, false, fmt.Errorf("testRun cannot be nil")
+	}
+
 	if testRun.ProjectID == "" {
 		return nil, false, fmt.Errorf("project ID is required")
+	}
+
+	// Validate individual spec names
+	if err := ValidateTestRun(testRun); err != nil {
+		return nil, false, err
 	}
 
 	// Set default values
@@ -220,32 +260,42 @@ func (s *TestRunService) updateSuiteStatistics(ctx context.Context, suiteRunID u
 
 // CreateTestRunWithSuites creates a test run with all its suites and specs in one transaction
 func (s *TestRunService) CreateTestRunWithSuites(ctx context.Context, testRun *domain.TestRun, suites []domain.SuiteRun) error {
-	// Create the test run
-	createdTestRun, _, err := s.CreateTestRun(ctx, testRun)
-	if err != nil {
-		return err
+	if testRun == nil {
+		return fmt.Errorf("testRun cannot be nil")
 	}
 
-	// Use the returned test run (either new or existing)
-	if createdTestRun != nil {
-		testRun = createdTestRun
+	// Validate suite runs for test spec name length
+	testRun.SuiteRuns = suites
+	if err := ValidateTestRun(testRun); err != nil {
+		return err
 	}
+	testRun.SuiteRuns = nil
 
 	// Always add the suite runs, whether test run is new or existing
 	// This handles the concurrent creation case where another thread created the test run
 
 	// Create all suites
+	createdTestRun, _, err := s.CreateTestRun(ctx, testRun)
+	if err != nil {
+		return err
+	}
+
+	if createdTestRun != nil {
+		testRun = createdTestRun
+	}
+
+	// Create suites + specs
 	for _, suite := range suites {
 		suite.TestRunID = testRun.ID
 		if err := s.suiteRunRepo.Create(ctx, &suite); err != nil {
 			return fmt.Errorf("failed to create suite run: %w", err)
 		}
 
-		// Create specs for this suite
 		if len(suite.SpecRuns) > 0 {
 			for _, spec := range suite.SpecRuns {
 				spec.SuiteRunID = suite.ID
 			}
+
 			if err := s.specRunRepo.CreateBatch(ctx, suite.SpecRuns); err != nil {
 				return fmt.Errorf("failed to create spec runs: %w", err)
 			}
@@ -294,7 +344,7 @@ func (s *TestRunService) CreateSpecRun(ctx context.Context, specRun *domain.Spec
 	if specRun.Status == "" {
 		specRun.Status = "pending"
 	}
-	
+
 	// Only auto-set StartTime if both StartTime and EndTime are zero
 	if specRun.StartTime.IsZero() && (specRun.EndTime == nil || specRun.EndTime.IsZero()) {
 		specRun.StartTime = time.Now()
